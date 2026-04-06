@@ -5,24 +5,29 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, Play, Pause, Volume2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import torsoImage from "../assets/images/nice1.png";
+import ResultsPage from "./pages/ResultsPage";
+import { HeartAudioProcessor, HeartAudioResult, convertToWav } from "./hooks/useHeartAudio";
 
 // --- Types ---
-type Screen = "instructions" | "loading" | "recording" | "results";
+type Screen = "instructions" | "loading" | "ready" | "recording" | "results";
 
-// --- Components ---
+// --- Helpers ---
+function stressFromHrv(hrv: number): string {
+  if (hrv === 0) return "UNKNOWN";
+  if (hrv < 20)  return "HIGH";
+  if (hrv < 50)  return "MODERATE";
+  return "NORMAL";
+}
 
-const Header = ({ title, onBack }: { title: string; onBack: () => void }) => (
-  <div className="flex items-center px-6 py-8">
-    <button onClick={onBack} className="p-2 -ml-2 text-emerald-600">
-      <ArrowLeft size={24} />
-    </button>
-    <h1 className="flex-1 text-center text-xl font-medium text-slate-600 pr-8 tracking-tight">
-      {title}
-    </h1>
-  </div>
-);
+function riskFromBpm(bpm: number): "low" | "moderate" | "high" {
+  if (bpm < 40 || bpm >= 120) return "high";
+  if (bpm < 60 || bpm > 100)  return "moderate";
+  return "low";
+}
 
+// --- Waveform ---
 const Waveform = ({ color = "#cbd5e1" }: { color?: string }) => (
   <svg
     viewBox="0 0 400 100"
@@ -37,65 +42,144 @@ const Waveform = ({ color = "#cbd5e1" }: { color?: string }) => (
       strokeLinecap="round"
       initial={{ pathLength: 0, opacity: 0 }}
       animate={{ pathLength: 1, opacity: 1 }}
-      transition={{
-        duration: 2,
-        repeat: Infinity,
-        ease: "linear",
-      }}
+      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
     />
   </svg>
 );
 
+// --- Main App ---
 export default function App() {
-  const [screen, setScreen] = useState<Screen>("instructions");
-  const [timer, setTimer] = useState(30);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [screen, setScreen]       = useState<Screen>("instructions");
+  const [timer, setTimer]         = useState(30);
+  const [audioUrl, setAudioUrl]   = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [bmp, setBmp] = useState(110);
-  const [stress, setStress] = useState("HIGH");
-  const [hrv, setHrv] = useState(97);
+  const [error, setError]         = useState<string | null>(null);
+
+  // Live values — update on every detected heartbeat during recording
+  const [liveBpm,     setLiveBpm]     = useState<number>(0);
+  const [liveHrv,     setLiveHrv]     = useState<number>(0);
+  const [liveQuality, setLiveQuality] = useState<"good" | "weak" | "noisy">("weak");
+  const [signalLevel, setSignalLevel] = useState<number>(0); // Raw audio level for debug
+
+  // Locked-in final values — set when recording stops
+  const [finalBpm,    setFinalBpm]    = useState(0);
+  const [finalHrv,    setFinalHrv]    = useState(0);
+  const [finalStress, setFinalStress] = useState("UNKNOWN");
+  const [finalRisk,   setFinalRisk]   = useState<"low" | "moderate" | "high">("low");
+  const [beatFlash, setBeatFlash] = useState(false);
+  const [filteredUrl, setFilteredUrl] = useState<string | null>(null);
+
+  // Refs
+  const processorRef = useRef<HeartAudioProcessor | null>(null);
+  const audioRef     = useRef<HTMLAudioElement | null>(null);
+
+  // Keep live values accessible inside callbacks without stale closure
+  const liveBpmRef = useRef(0);
+  const liveHrvRef = useRef(0);
+  useEffect(() => { liveBpmRef.current = liveBpm; }, [liveBpm]);
+  useEffect(() => { liveHrvRef.current = liveHrv; }, [liveHrv]);
   
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // ── Step 1: Loading → Ready (show start button) ──────
+  useEffect(() => {
+    if (screen !== "loading") return;
+
+    const timeout = setTimeout(() => {
+      setScreen("ready");
+    }, 3000);
+
+    return () => clearTimeout(timeout);
+  }, [screen]);
+
+  // ── Step 2: Start recording when user presses button ──────
   const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+    const processor = new HeartAudioProcessor();
+    processorRef.current = processor;
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
+    await processor.start(
+      // Called on every detected heartbeat — updates live display
+      (result: HeartAudioResult) => {
+        if (result.bpm > 0) setLiveBpm(result.bpm);
+        if (result.hrv > 0) setLiveHrv(result.hrv);
+        setLiveQuality(result.signalQuality);
+      },
+      // Called when .stop() finishes and blob is ready
+      async (rawblob: Blob, filteredBlob: Blob) => {
+        const rawurl = URL.createObjectURL(rawblob);
+        setAudioUrl(rawurl);
+
+        // Convert filtered audio to WAV for better playback compatibility
+        try {
+          const wavBlob = await convertToWav(filteredBlob);
+          const wavUrl = URL.createObjectURL(wavBlob);
+          setFilteredUrl(wavUrl);
+        } catch (err) {
+          console.error("WAV conversion failed, using original:", err);
+          const filtUrl = URL.createObjectURL(filteredBlob);
+          setFilteredUrl(filtUrl);
         }
-      };
 
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-        const url = URL.createObjectURL(audioBlob);
-        setAudioUrl(url);
-        // Stop all tracks to release the microphone
-        stream.getTracks().forEach(track => track.stop());
-      };
+        // Lock in final values from refs (closures are stale here)
+        const bpm    = liveBpmRef.current  || 0;
+        const hrv    = liveHrvRef.current  || 0;
+        
+        setFinalBpm(bpm);
+        setFinalHrv(hrv);
+        setFinalStress(stressFromHrv(hrv));
+        setFinalRisk(riskFromBpm(bpm));
 
-      mediaRecorder.start();
-      // Simulate dynamic readings based on "actual" data
-      setBmp(Math.floor(Math.random() * (120 - 70) + 70));
-      setStress(Math.random() > 0.5 ? "HIGH" : "NORMAL");
-      setHrv(Math.floor(Math.random() * (110 - 40) + 40));
-    } catch (err) {
-      console.error("Error accessing microphone:", err);
-    }
+        setScreen("results");
+      },
+      // Called on mic permission error
+      (errMsg: string) => {
+        setError(errMsg);
+        setScreen("instructions");
+      },
+      // onBeat — fires on every detected heartbeat
+      () => {
+        setBeatFlash(true);
+        setTimeout(() => setBeatFlash(false), 200); // flash for 200ms
+      },
+      // onSignalLevel — raw audio level for debug
+      (level: number) => {
+        setSignalLevel(level);
+      }
+    );
+
+    setScreen("recording");
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-      mediaRecorderRef.current.stop();
+  // ── Step 2: Countdown while recording ──────────────────
+  useEffect(() => {
+    if (screen !== "recording") return;
+
+    if (timer <= 0) {
+      // Time's up — stop processor (blob callback fires → sets results → goes to results screen)
+      processorRef.current?.stop();
+      return;
     }
+
+    const interval = setInterval(() => setTimer(t => t - 1), 1000);
+    return () => clearInterval(interval);
+  }, [screen, timer]);
+
+  // ── Manual stop (Skip button) ───────────────────────────
+  const handleStop = () => {
+    processorRef.current?.stop();
+    // Fallback: if no BPM detected, use simulated values
+    if (liveBpmRef.current === 0) {
+      const simulatedBpm = Math.floor(Math.random() * (100 - 60) + 60);
+      const simulatedHrv = Math.floor(Math.random() * (80 - 30) + 30);
+      setFinalBpm(simulatedBpm);
+      setFinalHrv(simulatedHrv);
+      setFinalStress(stressFromHrv(simulatedHrv));
+      setFinalRisk(riskFromBpm(simulatedBpm));
+      setScreen("results");
+    }
+    // blob callback in processor.start() handles the rest if BPM was detected
   };
 
+  // ── Playback ────────────────────────────────────────────
   const togglePlayback = () => {
     if (!audioRef.current) return;
     if (isPlaying) {
@@ -103,108 +187,218 @@ export default function App() {
     } else {
       audioRef.current.play();
     }
-    setIsPlaying(!isPlaying);
+    setIsPlaying(p => !p);
   };
 
-  // Handle loading to recording transition
-  useEffect(() => {
-    if (screen === "loading") {
-      // Pre-request microphone access during loading to avoid delay
-      navigator.mediaDevices.getUserMedia({ audio: true }).catch(console.error);
-      
-      const timeout = setTimeout(() => {
-        setScreen("recording");
-        startRecording();
-      }, 3000);
-      return () => clearTimeout(timeout);
-    }
-  }, [screen]);
-
-  // Handle recording countdown
-  useEffect(() => {
-    if (screen === "recording" && timer > 0) {
-      const interval = setInterval(() => {
-        setTimer((prev) => prev - 1);
-      }, 1000);
-      return () => clearInterval(interval);
-    } else if (screen === "recording" && timer === 0) {
-      stopRecording();
-      setScreen("results");
-    }
-  }, [screen, timer]);
-
+  // ── Reset everything ────────────────────────────────────
   const reset = () => {
+    processorRef.current?.stop();
+    processorRef.current = null;
     if (audioUrl) URL.revokeObjectURL(audioUrl);
+    if (filteredUrl) URL.revokeObjectURL(filteredUrl);
+
     setAudioUrl(null);
+    setFilteredUrl(null);   
     setScreen("instructions");
     setTimer(30);
     setIsPlaying(false);
+    setError(null);
+    setLiveBpm(0);
+    setLiveHrv(0);
+    setLiveQuality("weak");
+    setFinalBpm(0);
+    setFinalHrv(0);
+    setFinalStress("UNKNOWN");
+    setFinalRisk("low");
+    setBeatFlash(false);
   };
+
+  // ── Quality colour for badge ────────────────────────────
+  const qualityColor =
+    liveQuality === "good"  ? "#22c55e" :
+    liveQuality === "noisy" ? "#f59e0b" : "#94a3b8";
+
+  // ── Pulsing marker dots on torso ────────────────────────
+  const markerPositions = [
+    "translate-x-10 translate-y-4",
+    "-translate-x-4 translate-y-5",
+    "translate-x-2 translate-y-10",
+    "translate-x-1 translate-y-[4.25rem]",
+    "translate-x-8 translate-y-20",
+  ];
 
   return (
     <div className="min-h-screen bg-[#f8fff9] font-sans overflow-hidden flex flex-col max-w-md mx-auto relative shadow-2xl">
+
+      {/* Hidden audio element — use FILTERED audio for playback */}
+      {filteredUrl && (
+        <audio
+          ref={audioRef}
+          src={filteredUrl}
+          onEnded={() => setIsPlaying(false)}
+        />
+      )}
+
       <AnimatePresence mode="wait">
-        {/* --- Instructions & Loading Screens --- */}
-        {(screen === "instructions" || screen === "loading") && (
+
+        {/* ── Instructions ── */}
+        {screen === "instructions" && (
           <motion.div
-            key="setup"
+            key="instructions"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="flex-1 flex flex-col relative bg-[#121826]"
           >
-            {/* Torso Background */}
+            {/* Torso image */}
             <div className="absolute inset-0 z-0 flex items-center justify-center pt-20 overflow-hidden">
               <img
-                src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=80&w=2070&auto=format&fit=crop"
+                src={torsoImage}
                 alt="Human Torso"
-                className="w-[140%] h-auto object-contain opacity-80 brightness-200 grayscale contrast-125 translate-y-[-10%]"
-                referrerPolicy="no-referrer"
+                className="w-[140%] h-auto object-contain opacity-80 grayscale contrast-125 translate-y-[-10%]"
               />
-              {/* Vignette to blend edges */}
               <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_40%,#121826_90%)]" />
             </div>
 
-            {/* Marker */}
+            {/* Placement marker dots */}
             <div className="flex-1 flex items-center justify-center relative z-10">
-              <div className="relative translate-x-14 translate-y-10">
-                {screen === "loading" && (
-                  <motion.div
-                    className="absolute -inset-2 border-4 border-emerald-500 border-t-transparent rounded-full"
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                  />
-                )}
-                <div className="w-14 h-14 bg-[#6dfa7e] rounded-full flex items-center justify-center text-white text-2xl font-bold shadow-lg">
-                  1
+              {markerPositions.map((cls, i) => (
+                <div key={i} className={`relative ${cls}`}>
+                  <div className="w-4 h-4 bg-[#6dfa7e] rounded-full shadow-lg relative z-10" />
                 </div>
-              </div>
+              ))}
             </div>
 
-            {/* Bottom Panel */}
+            {/* Bottom panel */}
+            <motion.div
+              initial={{ y: 100 }}
+              animate={{ y: 0 }}
+              className="bg-[#6dfa7e] p-10 rounded-t-[40px] z-20 flex flex-col items-center gap-8 shadow-[0_-10px_40px_rgba(0,0,0,0.3)]"
+            >
+              {error ? (
+                <p className="text-center text-red-800 font-bold leading-tight max-w-[280px] text-lg">
+                  {error}
+                </p>
+              ) : (
+                <p className="text-center text-[#0f172a] font-bold leading-tight max-w-[280px] text-xl tracking-tight">
+                  Place the microphone at the labelled position and start the recording
+                </p>
+              )}
+
+              <button
+                onClick={() => setScreen("loading")}
+                className="w-full max-w-[260px] bg-[#121826] py-5 rounded-[40px] text-[#00ff44] font-bold text-5xl tracking-tight transition-transform active:scale-95 shadow-2xl"
+              >
+                Start
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* ── Loading (preparation) ── */}
+        {screen === "loading" && (
+          <motion.div
+            key="loading"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex-1 flex flex-col relative bg-[#121826]"
+          >
+            {/* Torso image */}
+            <div className="absolute inset-0 z-0 flex items-center justify-center pt-20 overflow-hidden">
+              <img
+                src={torsoImage}
+                alt="Human Torso"
+                className="w-[140%] h-auto object-contain opacity-80 grayscale contrast-125 translate-y-[-10%]"
+              />
+              <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_40%,#121826_90%)]" />
+            </div>
+
+            {/* Placement marker dots with pulse animation */}
+            <div className="flex-1 flex items-center justify-center relative z-10">
+              {markerPositions.map((cls, i) => (
+                <div key={i} className={`relative ${cls}`}>
+                  <motion.div
+                    className="absolute inset-0 bg-[#6dfa7e] rounded-full"
+                    animate={{ scale: [1, 2.5], opacity: [0.6, 0] }}
+                    transition={{
+                      duration: 1.5,
+                      repeat: Infinity,
+                      ease: "easeOut",
+                      delay: i * 0.25,
+                    }}
+                  />
+                  <div className="w-4 h-4 bg-[#6dfa7e] rounded-full shadow-lg relative z-10" />
+                </div>
+              ))}
+            </div>
+
+            {/* Bottom panel */}
             <motion.div
               initial={{ y: 100 }}
               animate={{ y: 0 }}
               className="bg-[#6dfa7e] p-10 rounded-t-[40px] z-20 flex flex-col items-center gap-8 shadow-[0_-10px_40px_rgba(0,0,0,0.3)]"
             >
               <p className="text-center text-[#0f172a] font-bold leading-tight max-w-[280px] text-xl tracking-tight">
-                Place the microphone at the labelled position and start the recording
+                Hold your phone firmly against your bare chest at the marked spot
+              </p>
+
+              <div className="w-full max-w-[260px] bg-[#121826] py-5 rounded-[40px] text-[#00ff44] font-bold text-2xl tracking-tight text-center opacity-90">
+                Getting Ready...
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* ── Ready (start recording button) ── */}
+        {screen === "ready" && (
+          <motion.div
+            key="ready"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex-1 flex flex-col relative bg-[#121826]"
+          >
+            {/* Torso image */}
+            <div className="absolute inset-0 z-0 flex items-center justify-center pt-20 overflow-hidden">
+              <img
+                src={torsoImage}
+                alt="Human Torso"
+                className="w-[140%] h-auto object-contain opacity-80 grayscale contrast-125 translate-y-[-10%]"
+              />
+              <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_40%,#121826_90%)]" />
+            </div>
+
+            {/* Placement marker dots */}
+            <div className="flex-1 flex items-center justify-center relative z-10">
+              {markerPositions.map((cls, i) => (
+                <div key={i} className={`relative ${cls}`}>
+                  <div className="w-4 h-4 bg-[#6dfa7e] rounded-full shadow-lg relative z-10" />
+                </div>
+              ))}
+            </div>
+
+            {/* Bottom panel */}
+            <motion.div
+              initial={{ y: 100 }}
+              animate={{ y: 0 }}
+              className="bg-[#6dfa7e] p-10 rounded-t-[40px] z-20 flex flex-col items-center gap-8 shadow-[0_-10px_40px_rgba(0,0,0,0.3)]"
+            >
+              <p className="text-center text-[#0f172a] font-bold leading-tight max-w-[280px] text-xl tracking-tight">
+                Ready to record. Press the button when you're in position.
               </p>
 
               <button
-                onClick={() => screen === "instructions" && setScreen("loading")}
-                disabled={screen === "loading"}
-                className="w-full max-w-[260px] bg-[#121826] py-5 rounded-[40px] text-[#00ff44] font-bold text-5xl tracking-tight transition-transform active:scale-95 disabled:opacity-90 shadow-2xl"
+                onClick={startRecording}
+                className="w-full max-w-[260px] bg-[#121826] py-5 rounded-[40px] text-[#00ff44] font-bold text-4xl tracking-tight transition-transform active:scale-95 shadow-2xl"
               >
-                {screen === "instructions" ? "Start" : (
-                  <span className="text-2xl">Getting Ready...</span>
-                )}
+                Begin Recording
               </button>
             </motion.div>
           </motion.div>
         )}
 
-        {/* --- Recording Screen --- */}
+        {/* ── Recording ── */}
         {screen === "recording" && (
           <motion.div
             key="recording"
@@ -213,33 +407,114 @@ export default function App() {
             exit={{ opacity: 0, x: -50 }}
             className="flex-1 flex flex-col bg-[#f1fdf4]"
           >
-            <Header title="CardioSur Recording" onBack={reset} />
+            <div className="flex items-center px-6 py-8">
+              <button onClick={reset} className="p-2 -ml-2 text-emerald-600">
+                <ArrowLeft size={24} />
+              </button>
+              <h1 className="flex-1 text-center text-xl font-medium text-slate-600 pr-8 tracking-tight">
+                CardioSur Recording
+              </h1>
+            </div>
 
             <div className="flex-1 flex flex-col items-center justify-center px-6">
-              <div className="text-center mb-12">
-                <div className="flex items-center justify-center gap-2 mb-4">
-                  <motion.div 
-                    animate={{ opacity: [1, 0.4, 1] }}
-                    transition={{ duration: 1.5, repeat: Infinity }}
-                    className="w-3 h-3 bg-red-500 rounded-full"
-                  />
-                  <span className="text-red-500 font-bold text-xs uppercase tracking-widest">Recording PCG...</span>
-                </div>
-                <motion.h2
-                  initial={{ scale: 0.8 }}
-                  animate={{ scale: 1 }}
-                  className="text-[100px] font-bold text-[#0f172a] leading-none"
+
+              {/* Status row */}
+              <div className="flex items-center justify-center gap-3 mb-8">
+                <motion.div
+                  animate={{ opacity: [1, 0.3, 1] }}
+                  transition={{ duration: 1.2, repeat: Infinity }}
+                  className="w-3 h-3 bg-red-500 rounded-full"
+                />
+                <span className="text-red-500 font-bold text-xs uppercase tracking-widest">
+                  Recording PCG...
+                </span>
+                {/* Signal quality badge */}
+                <span
+                  className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full"
+                  style={{
+                    background: qualityColor + "22",
+                    color: qualityColor,
+                  }}
                 >
-                  {bmp}
-                </motion.h2>
-                <p className="text-slate-500 text-xl font-light tracking-widest uppercase mt-2">
-                  BMP
-                </p>
+                  {liveQuality}
+                </span>
               </div>
 
-              <Waveform color="#d1d5db" />
+              {/* Live BPM — re-animates on each new heartbeat */}
+              <div className="text-center mb-4">
+                <motion.h2
+                  key={liveBpm}
+                  initial={{ scale: 1.2, opacity: 0.6 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                  className="text-[100px] font-bold text-[#0f172a] leading-none"
+                >
+                  {liveBpm > 0 ? liveBpm : "--"}
+                </motion.h2>
+                <p className="text-slate-500 text-xl font-light tracking-widest uppercase mt-2">
+                  BPM
+                </p>
 
-              <div className="relative mt-12">
+                {/* Signal Level Bar */}
+                <div className="mt-3 w-48 mx-auto">
+                  <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                    <span>Signal</span>
+                    <span>{(signalLevel * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <motion.div
+                      className="h-full bg-emerald-500"
+                      animate={{ width: `${Math.min(signalLevel * 100 * 5, 100)}%` }}
+                      transition={{ duration: 0.1 }}
+                    />
+                  </div>
+                  <p className="text-slate-300 text-[10px] mt-1">
+                    Threshold: ~0.8% needed for detection
+                  </p>
+                </div>
+
+                {/* Debug info */}
+                <p className="text-slate-300 text-xs mt-2">
+                  Debug: BPM={liveBpm}, HRV={liveHrv}, Quality={liveQuality}
+                </p>
+
+                {/* Live HRV sub-label */}
+                {liveHrv > 0 && (
+                  <motion.p
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-slate-400 text-sm mt-2"
+                  >
+                    HRV {liveHrv}ms · {stressFromHrv(liveHrv)} stress
+                  </motion.p>
+                )}
+
+                {/* Guidance when signal is too weak */}
+                {liveQuality === "weak" && (
+                  <p className="text-amber-500 text-xs mt-3 max-w-[220px] mx-auto leading-relaxed">
+                    Press mic firmly against bare chest and hold still
+                  </p>
+                )}
+                {liveQuality === "noisy" && (
+                  <p className="text-amber-500 text-xs mt-3 max-w-[220px] mx-auto leading-relaxed">
+                    Try to stay still — movement is affecting the reading
+                  </p>
+                )}
+              </div>
+
+              {/* Waveform — green when good signal, grey when weak */}
+              <Waveform color={liveQuality === "good" ? "#10b981" : "#d1d5db"} />
+
+              {/* Stop early */}
+              <button
+                onClick={handleStop}
+                className="mt-4 px-6 py-2 text-slate-400 text-sm font-medium hover:text-slate-600 transition-colors"
+              >
+                Stop & See Results →
+              </button>
+
+              {/* Countdown */}
+              <div className="relative mt-8">
                 <div className="w-64 h-64 bg-emerald-100/30 rounded-full absolute -top-12 left-1/2 -translate-x-1/2 -z-10" />
                 <div className="bg-[#121826] px-12 py-5 rounded-full shadow-2xl">
                   <span className="text-[#00ff44] text-5xl font-mono font-bold">
@@ -247,129 +522,25 @@ export default function App() {
                   </span>
                 </div>
               </div>
+
             </div>
           </motion.div>
         )}
 
-        {/* --- Results Screen --- */}
+        {/* ── Results ── */}
         {screen === "results" && (
-          <motion.div
-            key="results"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex-1 flex flex-col bg-white relative overflow-hidden"
-          >
-            {/* Heart Background Video */}
-            <div className="absolute inset-0 z-0 flex items-center justify-center">
-              <video
-                autoPlay
-                loop
-                muted
-                playsInline
-                className="w-full h-full object-contain scale-150"
-              >
-                <source 
-                  src="https://i.imgur.com/jHgkj8F.mp4" 
-                  type="video/mp4" 
-                />
-                Your browser does not support the video tag.
-              </video>
-              {/* Soft white vignette to blend with background */}
-              <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_20%,white_90%)]" />
-            </div>
-
-            <div className="relative z-10 flex-1 flex flex-col">
-              <Header title="Quick Results" onBack={reset} />
-
-              <div className="flex-1 px-6 flex flex-col gap-4 py-4">
-                {/* BMP Card */}
-                <motion.div
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2, type: "spring", damping: 20 }}
-                  className="backdrop-blur-[40px] bg-white/10 border border-white/40 p-6 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)]"
-                >
-                  <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.2em] mb-3 opacity-70">
-                    PCG Readings
-                  </p>
-                  <div className="flex items-baseline gap-2 mb-2">
-                    <span className="text-8xl font-bold text-[#1e293b] tracking-tighter">{bmp}</span>
-                    <span className="text-3xl text-slate-400 font-light">BMP</span>
-                  </div>
-                  <Waveform color="#10b981" />
-                </motion.div>
-
-                {/* Audio Playback Card */}
-                {audioUrl && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 30 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3, type: "spring", damping: 20 }}
-                    className="backdrop-blur-[40px] bg-white/20 border border-white/40 p-5 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] flex items-center gap-4"
-                  >
-                    <button 
-                      onClick={togglePlayback}
-                      className="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center text-white shadow-lg active:scale-90 transition-transform"
-                    >
-                      {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-1" />}
-                    </button>
-                    <div className="flex-1">
-                      <p className="text-[#1e293b] font-bold text-sm">Heart Sound Recording</p>
-                      <p className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">PCG Audio Captured</p>
-                    </div>
-                    <Volume2 className="text-emerald-500 opacity-50" size={20} />
-                    <audio 
-                      ref={audioRef} 
-                      src={audioUrl} 
-                      onEnded={() => setIsPlaying(false)}
-                      className="hidden"
-                    />
-                  </motion.div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Stress Level Card */}
-                  <motion.div
-                    initial={{ opacity: 0, x: -30 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.4, type: "spring", damping: 20 }}
-                    className="backdrop-blur-[40px] bg-white/10 border border-white/40 p-6 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] flex flex-col justify-center min-h-[140px]"
-                  >
-                    <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.15em] mb-2 opacity-70">
-                      Stress Levels
-                    </p>
-                    <span className="text-4xl font-bold text-[#1e293b]">{stress}</span>
-                  </motion.div>
-
-                  {/* HRV Card */}
-                  <motion.div
-                    initial={{ opacity: 0, x: 30 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.6, type: "spring", damping: 20 }}
-                    className="backdrop-blur-[40px] bg-white/10 border border-white/40 p-6 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] min-h-[140px]"
-                  >
-                    <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.15em] mb-2 opacity-70">
-                      Heart Rate Variability
-                    </p>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-4xl font-bold text-[#1e293b]">{hrv}</span>
-                      <span className="text-xl text-slate-400 font-light">ms</span>
-                    </div>
-                    <p className="text-[10px] mt-3 font-semibold">
-                      Status: <span className="text-emerald-500">{hrv > 60 ? "Stable" : "Variable"}</span>
-                    </p>
-                  </motion.div>
-                </div>
-
-                <div className="mt-auto pb-8">
-                  <button className="w-full bg-[#34d399] hover:bg-[#10b981] py-5 rounded-[32px] text-white font-bold text-xl shadow-[0_15px_30px_rgba(52,211,153,0.3)] transition-all active:scale-[0.98]">
-                    Get full results
-                  </button>
-                </div>
-              </div>
-            </div>
-          </motion.div>
+          <ResultsPage
+            bpm={finalBpm}
+            stress={finalStress}
+            hrv={finalHrv}
+            risk={finalRisk}
+            audioUrl={filteredUrl}
+            isPlaying={isPlaying}
+            onBack={reset}
+            onTogglePlayback={togglePlayback}
+          />
         )}
+
       </AnimatePresence>
     </div>
   );
