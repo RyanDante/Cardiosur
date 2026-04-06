@@ -1,0 +1,7 @@
+{
+  "name": "CardioSur",
+  "description": "Advanced heart rate monitoring and PCG analysis with real-time feedback.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
