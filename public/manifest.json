@@ -1,0 +1,19 @@
+{
+  "name": "CardioSur - Heart Sound Monitor",
+  "short_name": "CardioSur",
+  "description": "Real-time heart sound monitoring and analysis using phonocardiography",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fff9",
+  "theme_color": "#6dfa7e",
+  "orientation": "portrait",
+  "categories": ["health", "medical", "utilities"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable any"
+    }
+  ]
+}

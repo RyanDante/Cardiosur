@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft } from "lucide-react";
 import torsoImage from "../assets/images/nice1.png";
 import ResultsPage from "./pages/ResultsPage";
+import InstallPrompt from "./components/InstallPrompt";
 import { HeartAudioProcessor, HeartAudioResult, convertToWav } from "./hooks/useHeartAudio";
 
 // --- Types ---
@@ -229,6 +230,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#f8fff9] font-sans overflow-hidden flex flex-col max-w-md mx-auto relative shadow-2xl">
+      
+      <InstallPrompt />
 
       {/* Hidden audio element — use FILTERED audio for playback */}
       {filteredUrl && (
