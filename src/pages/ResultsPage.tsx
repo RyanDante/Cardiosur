@@ -5,7 +5,7 @@
 
 import { motion } from "motion/react";
 import { Play, Pause, Volume2, ArrowLeft } from "lucide-react";
-import heartAnimation from "../../assets/videos/Medical_Heart_Visualization.webm";
+import heartAnimation from "../../assets/videos/heart-rotate.webm";
 
 // --- Types ---
 interface ResultsPageProps {

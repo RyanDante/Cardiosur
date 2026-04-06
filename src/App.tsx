@@ -10,7 +10,7 @@ import torsoImage from "../assets/images/nice1.png";
 import ResultsPage from "./pages/ResultsPage";
 import InstallPrompt from "./components/InstallPrompt";
 import { HeartAudioProcessor, HeartAudioResult, convertToWav } from "./hooks/useHeartAudio";
-
+import { Analytics } from "@vercel/analytics/next"
 // --- Types ---
 type Screen = "instructions" | "loading" | "ready" | "recording" | "results";
 
