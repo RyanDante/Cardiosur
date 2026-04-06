@@ -395,7 +395,7 @@ export default function App() {
                 onClick={startRecording}
                 className="w-full max-w-[260px] bg-[#121826] py-5 rounded-[40px] text-[#00ff44] font-bold text-4xl tracking-tight transition-transform active:scale-95 shadow-2xl"
               >
-                Begin Recording
+                Record
               </button>
             </motion.div>
           </motion.div>
