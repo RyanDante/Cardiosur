@@ -5,7 +5,7 @@
 
 import { motion } from "motion/react";
 import { Play, Pause, Volume2, ArrowLeft } from "lucide-react";
-import heartAnimation from "../../assets/videos/heart-rotate.webm";
+import heartAnimation from "../../assets/videos/heat-beat.mp4";
 
 // --- Types ---
 interface ResultsPageProps {
@@ -106,7 +106,7 @@ export default function ResultsPage({
             initial={{ opacity: 0, y: -60 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, type: "spring", damping: 20 }}
-            className="backdrop-blur-[40px] bg-white/10 border border-white/40 p-4 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)]"
+            className="backdrop-blur-[10px] bg-white/10 border border-white/40 p-4 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)]"
           >
             <p className="text-black text-[10px] font-bold uppercase tracking-[0.2em] mb-2 opacity-70">
               PCG Readings
@@ -139,7 +139,7 @@ export default function ResultsPage({
               initial={{ opacity: 0, y: 60, x: 40 }}
               animate={{ opacity: 1, y: 0, x: 0 }}
               transition={{ delay: 0.3, type: "spring", damping: 20 }}
-              className="backdrop-blur-[40px] bg-white/20 border border-white/40 p-4 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] flex items-center gap-4"
+              className="backdrop-blur-[10px] bg-white/20 border border-white/40 p-4 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] flex items-center gap-4"
             >
               <button 
                 onClick={onTogglePlayback}
@@ -161,7 +161,7 @@ export default function ResultsPage({
               initial={{ opacity: 0, y: 60, x: -40 }}
               animate={{ opacity: 1, y: 0, x: 0 }}
               transition={{ delay: 0.4, type: "spring", damping: 20 }}
-              className="backdrop-blur-[40px] bg-white/10 border border-white/40 p-6 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] flex flex-col justify-center min-h-[140px]"
+              className="backdrop-blur-[10px] bg-white/10 border border-white/40 p-6 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] flex flex-col justify-center min-h-[140px]"
             >
               <p className="text-black text-[10px] font-bold uppercase tracking-[0.15em] mb-2 opacity-70">
                 Stress Levels
@@ -174,7 +174,7 @@ export default function ResultsPage({
               initial={{ opacity: 0, y: 60, x: 40 }}
               animate={{ opacity: 1, y: 0, x: 0 }}
               transition={{ delay: 0.6, type: "spring", damping: 20 }}
-              className="backdrop-blur-[40px] bg-white/10 border border-white/40 p-6 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] min-h-[140px]"
+              className="backdrop-blur-[10px] bg-white/10 border border-white/40 p-6 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] min-h-[140px]"
             >
               <p className="text-black text-[10px] font-bold uppercase tracking-[0.15em] mb-2 opacity-70">
                 Heart Rate Variability

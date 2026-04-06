@@ -10,6 +10,7 @@ import torsoImage from "../assets/images/nice1.png";
 import ResultsPage from "./pages/ResultsPage";
 import InstallPrompt from "./components/InstallPrompt";
 import { HeartAudioProcessor, HeartAudioResult, convertToWav } from "./hooks/useHeartAudio";
+import LiveWaveform from "./components/LiveWaveform";
 import { Analytics } from "@vercel/analytics/next"
 // --- Types ---
 type Screen = "instructions" | "loading" | "ready" | "recording" | "results";
@@ -28,26 +29,6 @@ function riskFromBpm(bpm: number): "low" | "moderate" | "high" {
   return "low";
 }
 
-// --- Waveform ---
-const Waveform = ({ color = "#cbd5e1" }: { color?: string }) => (
-  <svg
-    viewBox="0 0 400 100"
-    className="w-full h-24 my-8"
-    preserveAspectRatio="none"
-  >
-    <motion.path
-      d="M 0 50 L 50 50 L 60 20 L 70 80 L 80 50 L 120 50 L 130 10 L 140 90 L 150 50 L 200 50 L 210 30 L 220 70 L 230 50 L 280 50 L 290 15 L 300 85 L 310 50 L 400 50"
-      fill="transparent"
-      stroke={color}
-      strokeWidth="3"
-      strokeLinecap="round"
-      initial={{ pathLength: 0, opacity: 0 }}
-      animate={{ pathLength: 1, opacity: 1 }}
-      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-    />
-  </svg>
-);
-
 // --- Main App ---
 export default function App() {
   const [screen, setScreen]       = useState<Screen>("instructions");
@@ -61,6 +42,7 @@ export default function App() {
   const [liveHrv,     setLiveHrv]     = useState<number>(0);
   const [liveQuality, setLiveQuality] = useState<"good" | "weak" | "noisy">("weak");
   const [signalLevel, setSignalLevel] = useState<number>(0); // Raw audio level for debug
+  const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
 
   // Locked-in final values — set when recording stops
   const [finalBpm,    setFinalBpm]    = useState(0);
@@ -69,6 +51,7 @@ export default function App() {
   const [finalRisk,   setFinalRisk]   = useState<"low" | "moderate" | "high">("low");
   const [beatFlash, setBeatFlash] = useState(false);
   const [filteredUrl, setFilteredUrl] = useState<string | null>(null);
+  const [coachMsg, setCoachMsg] = useState("");
 
   // Refs
   const processorRef = useRef<HeartAudioProcessor | null>(null);
@@ -79,7 +62,25 @@ export default function App() {
   const liveHrvRef = useRef(0);
   useEffect(() => { liveBpmRef.current = liveBpm; }, [liveBpm]);
   useEffect(() => { liveHrvRef.current = liveHrv; }, [liveHrv]);
-  
+
+  // ── Coaching messages during recording ──────────────────
+  useEffect(() => {
+    if (screen !== "recording") { setCoachMsg(""); return; }
+
+    const messages = [
+      { time: 2,  text: "Hold your phone steady against your chest..." },
+      { time: 6,  text: "You're doing great — stay still" },
+      { time: 10, text: "Breathe normally, try not to move" },
+      { time: 14, text: "Almost halfway there, keep going..." },
+      { time: 18, text: "Stay relaxed, we're picking up your signal" },
+      { time: 22, text: "Just a few more seconds..." },
+      { time: 26, text: "Wrapping up — hang tight!" },
+    ];
+
+    const elapsed = 30 - timer;
+    const current = [...messages].reverse().find(m => elapsed >= m.time);
+    setCoachMsg(current?.text ?? "Listening for your heartbeat...");
+  }, [screen, timer]);
 
   // ── Step 1: Loading → Ready (show start button) ──────
   useEffect(() => {
@@ -147,6 +148,8 @@ export default function App() {
       }
     );
 
+    // Expose analyser for live waveform
+    setAnalyserNode(processor.analyserNode);
     setScreen("recording");
   };
 
@@ -199,7 +202,8 @@ export default function App() {
     if (filteredUrl) URL.revokeObjectURL(filteredUrl);
 
     setAudioUrl(null);
-    setFilteredUrl(null);   
+    setFilteredUrl(null);
+    setAnalyserNode(null);
     setScreen("instructions");
     setTimer(30);
     setIsPlaying(false);
@@ -419,10 +423,10 @@ export default function App() {
               </h1>
             </div>
 
-            <div className="flex-1 flex flex-col items-center justify-center px-6">
+            <div className="flex-1 flex flex-col items-center justify-between px-6 py-4">
 
               {/* Status row */}
-              <div className="flex items-center justify-center gap-3 mb-8">
+              <div className="flex items-center justify-center gap-3">
                 <motion.div
                   animate={{ opacity: [1, 0.3, 1] }}
                   transition={{ duration: 1.2, repeat: Infinity }}
@@ -431,98 +435,44 @@ export default function App() {
                 <span className="text-red-500 font-bold text-xs uppercase tracking-widest">
                   Recording PCG...
                 </span>
-                {/* Signal quality badge */}
-                <span
-                  className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full"
-                  style={{
-                    background: qualityColor + "22",
-                    color: qualityColor,
-                  }}
-                >
-                  {liveQuality}
-                </span>
               </div>
 
-              {/* Live BPM — re-animates on each new heartbeat */}
-              <div className="text-center mb-4">
-                <motion.h2
-                  key={liveBpm}
-                  initial={{ scale: 1.2, opacity: 0.6 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                  className="text-[100px] font-bold text-[#0f172a] leading-none"
+              {/* Coaching message */}
+              <AnimatePresence mode="wait">
+                <motion.p
+                  key={coachMsg}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.4 }}
+                  className="text-slate-400 text-sm text-center italic mt-2"
                 >
-                  {liveBpm > 0 ? liveBpm : "--"}
-                </motion.h2>
-                <p className="text-slate-500 text-xl font-light tracking-widest uppercase mt-2">
-                  BPM
-                </p>
+                  {coachMsg}
+                </motion.p>
+              </AnimatePresence>
 
-                {/* Signal Level Bar */}
-                <div className="mt-3 w-48 mx-auto">
-                  <div className="flex justify-between text-[10px] text-slate-400 mb-1">
-                    <span>Signal</span>
-                    <span>{(signalLevel * 100).toFixed(1)}%</span>
-                  </div>
-                  <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                    <motion.div
-                      className="h-full bg-emerald-500"
-                      animate={{ width: `${Math.min(signalLevel * 100 * 5, 100)}%` }}
-                      transition={{ duration: 0.1 }}
-                    />
-                  </div>
-                  <p className="text-slate-300 text-[10px] mt-1">
-                    Threshold: ~0.8% needed for detection
-                  </p>
-                </div>
-
-                {/* Debug info */}
-                <p className="text-slate-300 text-xs mt-2">
-                  Debug: BPM={liveBpm}, HRV={liveHrv}, Quality={liveQuality}
-                </p>
-
-                {/* Live HRV sub-label */}
-                {liveHrv > 0 && (
-                  <motion.p
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="text-slate-400 text-sm mt-2"
-                  >
-                    HRV {liveHrv}ms · {stressFromHrv(liveHrv)} stress
-                  </motion.p>
-                )}
-
-                {/* Guidance when signal is too weak */}
-                {liveQuality === "weak" && (
-                  <p className="text-amber-500 text-xs mt-3 max-w-[220px] mx-auto leading-relaxed">
-                    Press mic firmly against bare chest and hold still
-                  </p>
-                )}
-                {liveQuality === "noisy" && (
-                  <p className="text-amber-500 text-xs mt-3 max-w-[220px] mx-auto leading-relaxed">
-                    Try to stay still — movement is affecting the reading
-                  </p>
-                )}
+              {/* Live Waveform — main section */}
+              <div className="w-full flex-1 flex items-center py-4">
+                <LiveWaveform analyser={analyserNode} />
               </div>
 
-              {/* Waveform — green when good signal, grey when weak */}
-              <Waveform color={liveQuality === "good" ? "#10b981" : "#d1d5db"} />
+              {/* Bottom controls */}
+              <div className="flex flex-col items-center gap-4 pb-2">
+                {/* Stop early */}
+                <button
+                  onClick={handleStop}
+                  className="px-6 py-2 text-slate-400 text-sm font-medium hover:text-slate-600 transition-colors"
+                >
+                  Stop & See Results →
+                </button>
 
-              {/* Stop early */}
-              <button
-                onClick={handleStop}
-                className="mt-4 px-6 py-2 text-slate-400 text-sm font-medium hover:text-slate-600 transition-colors"
-              >
-                Stop & See Results →
-              </button>
-
-              {/* Countdown */}
-              <div className="relative mt-8">
-                <div className="w-64 h-64 bg-emerald-100/30 rounded-full absolute -top-12 left-1/2 -translate-x-1/2 -z-10" />
-                <div className="bg-[#121826] px-12 py-5 rounded-full shadow-2xl">
-                  <span className="text-[#00ff44] text-5xl font-mono font-bold">
-                    00:{timer.toString().padStart(2, "0")}
-                  </span>
+                {/* Countdown */}
+                <div className="relative">
+                  <div className="bg-[#121826] px-12 py-5 rounded-full shadow-2xl">
+                    <span className="text-[#00ff44] text-5xl font-mono font-bold">
+                      00:{timer.toString().padStart(2, "0")}
+                    </span>
+                  </div>
                 </div>
               </div>
 

@@ -22,7 +22,7 @@ export class HeartAudioProcessor {
   // ── Audio graph nodes ──────────────────────────────────
   private audioCtx: AudioContext | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
-  private analyserNode: AnalyserNode | null = null;
+  public analyserNode: AnalyserNode | null = null;
   private stream: MediaStream | null = null;
 
   // ── Raw recorder (sent to backend) ────────────────────
