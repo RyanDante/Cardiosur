@@ -324,10 +324,12 @@ export default function App() {
 
   // ── Step 1: User clicks "Start" - Request permission first ──────
   const handleStartClick = async () => {
-    console.log("User clicked Start - requesting microphone permission...");
+    console.log("User clicked Start - requesting microphone permission from browser...");
+    setError(null);
     
     try {
-      // Request microphone permission immediately on user click
+      // This will trigger the browser's permission dialog
+      // The browser will ask the user: "Allow this site to use your microphone?"
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
@@ -338,15 +340,26 @@ export default function App() {
         },
       });
       
-      // Permission granted - stop the stream immediately (we'll create a new one during recording)
-      stream.getTracks().forEach(track => track.stop());
-      console.log("Microphone permission granted, proceeding to countdown");
+      // User clicked "Allow" - permission granted!
+      console.log("✓ Browser granted microphone permission!");
       
+      // Stop this temporary stream (we'll create the actual recording stream later)
+      stream.getTracks().forEach(track => {
+        track.stop();
+        console.log("Stopped temporary microphone track");
+      });
+      
+      console.log("Proceeding to countdown screen...");
       // Now go to loading screen
       setScreen("loading");
+      
     } catch (err) {
-      console.error("Microphone permission denied:", err);
-      setError("Microphone access is required. Please allow microphone access and try again.");
+      // User clicked "Block" or permission denied
+      console.error("✗ Microphone permission denied by user or browser:", err);
+      setError(
+        "Microphone access is required to record your heart sounds. " +
+        "Please allow microphone access in your browser settings and try again."
+      );
     }
   };
 
