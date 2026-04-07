@@ -8,13 +8,18 @@ interface BeforeInstallPromptEvent extends Event {
 
 export default function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [showInstall, setShowInstall] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
+    // Check if app is already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true);
+      return;
+    }
+
     const handler = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-      setShowInstall(true);
     };
 
     window.addEventListener('beforeinstallprompt', handler);
@@ -25,18 +30,23 @@ export default function InstallPrompt() {
   }, []);
 
   const handleInstall = async () => {
-    if (!deferredPrompt) return;
+    if (!deferredPrompt) {
+      // If no deferred prompt, try to guide user to manual installation
+      alert('To install this app:\n\n1. Tap the share button in your browser\n2. Select "Add to Home Screen"\n3. Tap "Add"');
+      return;
+    }
 
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
     
     if (outcome === 'accepted') {
       setDeferredPrompt(null);
-      setShowInstall(false);
+      setIsInstalled(true);
     }
   };
 
-  if (!showInstall) return null;
+  // Don't show if already installed
+  if (isInstalled) return null;
 
   return (
     <button

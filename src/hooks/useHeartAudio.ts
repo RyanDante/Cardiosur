@@ -59,6 +59,7 @@ export class HeartAudioProcessor {
     this.onSignalLevel = onSignalLevel ?? null;
 
     // ── 1. Request microphone — raw, no processing ───────
+    console.log("Requesting microphone access...");
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -67,10 +68,11 @@ export class HeartAudioProcessor {
           autoGainControl: false,
           channelCount: 1,
           sampleRate: 44100,
-          deviceId: "default",
         },
       });
-    } catch {
+      console.log("Microphone access granted");
+    } catch (err) {
+      console.error("Microphone access denied:", err);
       onError(
         "Microphone access denied. Please allow microphone access and try again."
       );
@@ -79,6 +81,14 @@ export class HeartAudioProcessor {
 
     // ── 2. Build filter chain ────────────────────────────
     this.audioCtx = new AudioContext({ sampleRate: 44100 });
+    
+    // Resume AudioContext if suspended (required for mobile browsers)
+    if (this.audioCtx.state === 'suspended') {
+      console.log("AudioContext suspended, resuming...");
+      await this.audioCtx.resume();
+    }
+    console.log("AudioContext state:", this.audioCtx.state);
+    
     this.sourceNode = this.audioCtx.createMediaStreamSource(this.stream);
 
     // Highpass at 18Hz — removes sub-bass rumble + mic handling noise
@@ -172,7 +182,9 @@ export class HeartAudioProcessor {
     this.filteredMediaRecorder.start(500);
 
     // ── 7. Start peak detection loop ─────────────────────
+    console.log("Starting peak detection loop...");
     this.detectPeaks();
+    console.log("HeartAudioProcessor started successfully");
   }
 
   // ─────────────────────────────────────────────────────
