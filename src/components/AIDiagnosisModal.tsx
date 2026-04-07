@@ -74,7 +74,7 @@ Format the response as JSON:
 }`;
 
       // Call AI API (using Gemini or similar)
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=YOUR_API_KEY', {
+      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyCRJOCT2ze9y1E78h-aMRi-9zMof3Pa8DQ', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
