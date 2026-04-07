@@ -52,7 +52,7 @@ async function sendAudioToBackend(audioBlob: Blob): Promise<PredictionResult | n
     const formData = new FormData();
     formData.append("file", wavBlob, "heart_sound.wav");
 
-    const response = await fetch("http://localhost:8000/api/predict", {
+    const response = await fetch("https://cardiosur-api.onrender.com/api/predict", {
       method: "POST",
       body: formData,
     });
