@@ -6,6 +6,8 @@
 import { motion } from "motion/react";
 import { Play, Pause, Volume2, ArrowLeft, RefreshCw } from "lucide-react";
 import heartAnimation from "../../assets/videos/heat-beat.mp4";
+import AIDiagnosisModal from "../components/AIDiagnosisModal";
+import { useState } from "react";
 
 // --- Types ---
 interface ResultsPageProps {
@@ -88,6 +90,7 @@ export default function ResultsPage({
   isPredicting = false,
 }: ResultsPageProps) {
   console.log("ResultsPage rendering with:", { bpm, stress, hrv, risk, audioUrl, prediction, isPredicting });
+  const [showAIModal, setShowAIModal] = useState(false);
   
   // Fallback for debugging - show when no data is available
   if (!bpm && !prediction) {
@@ -216,7 +219,7 @@ export default function ResultsPage({
               initial={{ opacity: 0, y: 40, x: -40 }}
               animate={{ opacity: 1, y: -12, x: 0 }}
               transition={{ delay: 0.4, type: "spring", damping: 20 }}
-              className="backdrop-blur-[10px] bg-white/10 border border-white/40 p-3 sm:p-4 rounded-[22px] sm:rounded-[28px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] flex flex-col justify-center min-h-[90px] sm:min-h-[110px]"
+              className="backdrop-blur-[10px] bg-white/10 border border-white/40 p-3 sm:p-4 rounded-[22px] sm:rounded-[28px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] flex flex-col justify-center min-h-[90px] sm:min-h-[110px] translate-y-8"
             >
               <p className="text-black text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1 opacity-70">
                 Heart Rate
@@ -246,7 +249,7 @@ export default function ResultsPage({
               initial={{ opacity: 0, y: 60, x: 40 }}
               animate={{ opacity: 1, y: 0, x: 0 }}
               transition={{ delay: 0.6, type: "spring", damping: 20 }}
-              className="backdrop-blur-[10px] bg-white/10 border border-white/40 p-3 sm:p-4 rounded-[22px] sm:rounded-[28px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] min-h-[90px] sm:min-h-[110px]"
+              className="backdrop-blur-[10px] bg-white/10 border border-white/40 p-3 sm:p-4 rounded-[22px] sm:rounded-[28px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] min-h-[90px] sm:min-h-[110px] translate-y-12"
             >
               <p className="text-black text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1 opacity-70">
                 HRV
@@ -390,12 +393,27 @@ export default function ResultsPage({
           )}
 
           <div className="mt-auto pb-8">
-            <button className="w-full bg-[#34d399] hover:bg-[#10b981] py-5 rounded-[32px] text-white font-bold text-xl shadow-[0_15px_30px_rgba(52,211,153,0.3)] transition-all active:scale-[0.98] disabled:opacity-50" disabled={isPredicting}>
+            <button 
+              onClick={() => setShowAIModal(true)}
+              className="w-full bg-[#34d399] hover:bg-[#10b981] py-5 rounded-[32px] text-white font-bold text-xl shadow-[0_15px_30px_rgba(52,211,153,0.3)] transition-all active:scale-[0.98] disabled:opacity-50" 
+              disabled={isPredicting}
+            >
               {isPredicting ? "Analyzing..." : "Get full results"}
             </button>
           </div>
         </div>
       </div>
+
+      {/* AI Diagnosis Modal */}
+      <AIDiagnosisModal
+        isOpen={showAIModal}
+        onClose={() => setShowAIModal(false)}
+        bpm={bpm}
+        hrv={hrv}
+        stress={stress}
+        risk={risk}
+        prediction={prediction}
+      />
     </motion.div>
   );
 }
