@@ -12,8 +12,10 @@ import InstallPrompt from "./components/InstallPrompt";
 import { HeartAudioProcessor, HeartAudioResult, convertToWav } from "./hooks/useHeartAudio";
 import LiveWaveform from "./components/LiveWaveform";
 import { Analytics } from "@vercel/analytics/next"
+import OnboardingScreen from "./components/OnboardingScreen";
+
 // --- Types ---
-type Screen = "instructions" | "loading" | "ready" | "recording" | "results";
+type Screen = "onboarding" | "instructions" | "loading" | "ready" | "recording" | "results";
 
 // --- Helpers ---
 function stressFromHrv(hrv: number): string {
@@ -31,7 +33,7 @@ function riskFromBpm(bpm: number): "low" | "moderate" | "high" {
 
 // --- Main App ---
 export default function App() {
-  const [screen, setScreen]       = useState<Screen>("instructions");
+  const [screen, setScreen]       = useState<Screen>("onboarding");
   const [timer, setTimer]         = useState(30);
   const [audioUrl, setAudioUrl]   = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -52,6 +54,7 @@ export default function App() {
   const [beatFlash, setBeatFlash] = useState(false);
   const [filteredUrl, setFilteredUrl] = useState<string | null>(null);
   const [coachMsg, setCoachMsg] = useState("");
+  const [loadingCountdown, setLoadingCountdown] = useState(5);
 
   // Refs
   const processorRef = useRef<HeartAudioProcessor | null>(null);
@@ -81,17 +84,6 @@ export default function App() {
     const current = [...messages].reverse().find(m => elapsed >= m.time);
     setCoachMsg(current?.text ?? "Listening for your heartbeat...");
   }, [screen, timer]);
-
-  // ── Step 1: Loading → Ready (show start button) ──────
-  useEffect(() => {
-    if (screen !== "loading") return;
-
-    const timeout = setTimeout(() => {
-      setScreen("ready");
-    }, 3000);
-
-    return () => clearTimeout(timeout);
-  }, [screen]);
 
   // ── Step 2: Start recording when user presses button ──────
   const startRecording = async () => {
@@ -153,6 +145,26 @@ export default function App() {
     setScreen("recording");
   };
 
+  // ── Step 1: Loading countdown → Recording (5s countdown) ──────
+  useEffect(() => {
+    if (screen !== "loading") return;
+
+    setLoadingCountdown(5);
+
+    const interval = setInterval(() => {
+      setLoadingCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          startRecording();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [screen]);
+
   // ── Step 2: Countdown while recording ──────────────────
   useEffect(() => {
     if (screen !== "recording") return;
@@ -181,6 +193,32 @@ export default function App() {
       setScreen("results");
     }
     // blob callback in processor.start() handles the rest if BPM was detected
+  };
+
+  // ── Cancel recording and return to instructions ──────────────
+  const cancelRecording = () => {
+    processorRef.current?.stop();
+    processorRef.current = null;
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    if (filteredUrl) URL.revokeObjectURL(filteredUrl);
+
+    setAudioUrl(null);
+    setFilteredUrl(null);
+    setAnalyserNode(null);
+    setScreen("instructions");
+    setTimer(30);
+    setIsPlaying(false);
+    setError(null);
+    setLiveBpm(0);
+    setLiveHrv(0);
+    setLiveQuality("weak");
+    setFinalBpm(0);
+    setFinalHrv(0);
+    setFinalStress("UNKNOWN");
+    setFinalRisk("low");
+    setBeatFlash(false);
+    setCoachMsg("");
+    setLoadingCountdown(5);
   };
 
   // ── Playback ────────────────────────────────────────────
@@ -233,7 +271,7 @@ export default function App() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#f8fff9] font-sans overflow-hidden flex flex-col max-w-md mx-auto relative shadow-2xl">
+    <div className="min-h-screen min-h-[100dvh] bg-[#f8fff9] font-sans overflow-hidden flex flex-col max-w-md mx-auto relative shadow-2xl">
       
       <InstallPrompt />
 
@@ -247,6 +285,20 @@ export default function App() {
       )}
 
       <AnimatePresence mode="wait">
+
+
+        {/* ── Onboarding ── */}
+        {screen === "onboarding" && (
+          <motion.div
+            key="onboarding"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0"
+          >
+            <OnboardingScreen onComplete={() => setScreen("instructions")} />
+          </motion.div>
+        )}
 
         {/* ── Instructions ── */}
         {screen === "instructions" && (
@@ -280,21 +332,21 @@ export default function App() {
             <motion.div
               initial={{ y: 100 }}
               animate={{ y: 0 }}
-              className="bg-[#6dfa7e] p-10 rounded-t-[40px] z-20 flex flex-col items-center gap-8 shadow-[0_-10px_40px_rgba(0,0,0,0.3)]"
+              className="bg-[#6dfa7e] p-6 sm:p-10 rounded-t-[32px] sm:rounded-t-[40px] z-20 flex flex-col items-center gap-5 sm:gap-8 shadow-[0_-10px_40px_rgba(0,0,0,0.3)]"
             >
               {error ? (
-                <p className="text-center text-red-800 font-bold leading-tight max-w-[280px] text-lg">
+                <p className="text-center text-red-800 font-bold leading-tight max-w-[280px] text-base sm:text-lg">
                   {error}
                 </p>
               ) : (
-                <p className="text-center text-[#0f172a] font-bold leading-tight max-w-[280px] text-xl tracking-tight">
+                <p className="text-center text-[#0f172a] font-bold leading-tight max-w-[280px] text-lg sm:text-xl tracking-tight">
                   Place the microphone at the labelled position and start the recording
                 </p>
               )}
 
               <button
                 onClick={() => setScreen("loading")}
-                className="w-full max-w-[260px] bg-[#121826] py-5 rounded-[40px] text-[#00ff44] font-bold text-5xl tracking-tight transition-transform active:scale-95 shadow-2xl"
+                className="w-full max-w-[260px] bg-[#121826] py-4 sm:py-5 rounded-[40px] text-[#00ff44] font-bold text-4xl sm:text-5xl tracking-tight transition-transform active:scale-95 shadow-2xl"
               >
                 Start
               </button>
@@ -344,14 +396,23 @@ export default function App() {
             <motion.div
               initial={{ y: 100 }}
               animate={{ y: 0 }}
-              className="bg-[#6dfa7e] p-10 rounded-t-[40px] z-20 flex flex-col items-center gap-8 shadow-[0_-10px_40px_rgba(0,0,0,0.3)]"
+              className="bg-[#AEEAD5] p-6 sm:p-10 rounded-t-[32px] sm:rounded-t-[40px] z-20 flex flex-col items-center gap-5 sm:gap-8 shadow-[0_-10px_40px_rgba(0,0,0,0.3)]"
             >
-              <p className="text-center text-[#0f172a] font-bold leading-tight max-w-[280px] text-xl tracking-tight">
+              <p className="text-center text-[#0f172a] font-bold leading-tight max-w-[280px] text-lg sm:text-xl tracking-tight">
                 Hold your phone firmly against your bare chest at the marked spot
               </p>
 
-              <div className="w-full max-w-[260px] bg-[#121826] py-5 rounded-[40px] text-[#00ff44] font-bold text-2xl tracking-tight text-center opacity-90">
-                Getting Ready...
+              <div className="w-full max-w-[260px] bg-[#121826] py-4 sm:py-5 rounded-[40px] text-[#00ff44] font-bold text-xl sm:text-2xl tracking-tight text-center opacity-90 flex items-center justify-center gap-2">
+                <span>Getting ready...</span>
+                <motion.span
+                  key={loadingCountdown}
+                  initial={{ scale: 1.4, opacity: 0.6 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                  className="text-2xl sm:text-3xl"
+                >
+                  {loadingCountdown}
+                </motion.span>
               </div>
             </motion.div>
           </motion.div>
@@ -389,15 +450,15 @@ export default function App() {
             <motion.div
               initial={{ y: 100 }}
               animate={{ y: 0 }}
-              className="bg-[#6dfa7e] p-10 rounded-t-[40px] z-20 flex flex-col items-center gap-8 shadow-[0_-10px_40px_rgba(0,0,0,0.3)]"
+              className="bg-[#6dfa7e] p-6 sm:p-10 rounded-t-[32px] sm:rounded-t-[40px] z-20 flex flex-col items-center gap-5 sm:gap-8 shadow-[0_-10px_40px_rgba(0,0,0,0.3)]"
             >
-              <p className="text-center text-[#0f172a] font-bold leading-tight max-w-[280px] text-xl tracking-tight">
+              <p className="text-center text-[#0f172a] font-bold leading-tight max-w-[280px] text-lg sm:text-xl tracking-tight">
                 Ready to record. Press the button when you're in position.
               </p>
 
               <button
                 onClick={startRecording}
-                className="w-full max-w-[260px] bg-[#121826] py-5 rounded-[40px] text-[#00ff44] font-bold text-4xl tracking-tight transition-transform active:scale-95 shadow-2xl"
+                className="w-full max-w-[260px] bg-[#121826] py-4 sm:py-5 rounded-[40px] text-[#00ff44] font-bold text-3xl sm:text-4xl tracking-tight transition-transform active:scale-95 shadow-2xl"
               >
                 Record
               </button>
@@ -414,16 +475,16 @@ export default function App() {
             exit={{ opacity: 0, x: -50 }}
             className="flex-1 flex flex-col bg-[#f1fdf4]"
           >
-            <div className="flex items-center px-6 py-8">
-              <button onClick={reset} className="p-2 -ml-2 text-emerald-600">
-                <ArrowLeft size={24} />
+            <div className="flex items-center px-4 sm:px-6 py-4 sm:py-8">
+              <button onClick={cancelRecording} className="p-2 -ml-2 text-emerald-600">
+                <ArrowLeft size={22} />
               </button>
-              <h1 className="flex-1 text-center text-xl font-medium text-slate-600 pr-8 tracking-tight">
+              <h1 className="flex-1 text-center text-base sm:text-xl font-medium text-slate-600 pr-8 tracking-tight">
                 CardioSur Recording
               </h1>
             </div>
 
-            <div className="flex-1 flex flex-col items-center justify-between px-6 py-4">
+            <div className="flex-1 flex flex-col items-center justify-between px-4 sm:px-6 py-3 sm:py-4">
 
               {/* Status row */}
               <div className="flex items-center justify-center gap-3">
@@ -457,19 +518,19 @@ export default function App() {
               </div>
 
               {/* Bottom controls */}
-              <div className="flex flex-col items-center gap-4 pb-2">
+              <div className="flex flex-col items-center gap-2 sm:gap-4 pb-2">
                 {/* Stop early */}
                 <button
                   onClick={handleStop}
-                  className="px-6 py-2 text-slate-400 text-sm font-medium hover:text-slate-600 transition-colors"
+                  className="px-4 sm:px-6 py-1.5 sm:py-2 text-slate-400 text-xs sm:text-sm font-medium hover:text-slate-600 transition-colors"
                 >
                   Stop & See Results →
                 </button>
 
                 {/* Countdown */}
                 <div className="relative">
-                  <div className="bg-[#121826] px-12 py-5 rounded-full shadow-2xl">
-                    <span className="text-[#00ff44] text-5xl font-mono font-bold">
+                  <div className="bg-[#121826] px-8 sm:px-12 py-3.5 sm:py-5 rounded-full shadow-2xl">
+                    <span className="text-[#00ff44] text-3xl sm:text-5xl font-mono font-bold">
                       00:{timer.toString().padStart(2, "0")}
                     </span>
                   </div>
@@ -491,6 +552,7 @@ export default function App() {
             isPlaying={isPlaying}
             onBack={reset}
             onTogglePlayback={togglePlayback}
+            onRestart={cancelRecording}
           />
         )}
 

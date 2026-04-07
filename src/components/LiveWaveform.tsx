@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 
 interface LiveWaveformProps {
   analyser: AnalyserNode | null;
@@ -7,6 +7,18 @@ interface LiveWaveformProps {
 export default function LiveWaveform({ analyser }: LiveWaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
+  const [height, setHeight] = useState(280);
+
+  // Responsive height
+  useEffect(() => {
+    const updateHeight = () => {
+      const w = window.innerWidth;
+      setHeight(w < 380 ? 180 : w < 420 ? 220 : 280);
+    };
+    updateHeight();
+    window.addEventListener("resize", updateHeight);
+    return () => window.removeEventListener("resize", updateHeight);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -60,7 +72,7 @@ export default function LiveWaveform({ analyser }: LiveWaveformProps) {
       ctx.lineTo(w, midY);
       ctx.stroke();
 
-      // Draw waveform
+      // Draw waveform — left to right like a normal EKG
       const sliceWidth = w / historyLength;
 
       // Glow effect
@@ -73,7 +85,7 @@ export default function LiveWaveform({ analyser }: LiveWaveformProps) {
       ctx.beginPath();
 
       for (let i = 0; i < history.length; i++) {
-        const x = i * sliceWidth;
+        const x = (history.length - 1 - i) * sliceWidth;
         // Scale RMS to visible amplitude (multiply to make it visible)
         const amplitude = history[i] * h * 8;
         // Create a waveform-like pattern using sin modulation
@@ -84,9 +96,10 @@ export default function LiveWaveform({ analyser }: LiveWaveformProps) {
           ctx.moveTo(x, y);
         } else {
           // Smooth curve
-          const prevX = (i - 1) * sliceWidth;
-          const prevAmplitude = history[i - 1] * h * 8;
-          const prevFreq = ((i - 1) * 0.15) + (history[i - 1] * 50);
+          const prevIdx = i - 1;
+          const prevX = (history.length - 1 - prevIdx) * sliceWidth;
+          const prevAmplitude = history[prevIdx] * h * 8;
+          const prevFreq = (prevIdx * 0.15) + (history[prevIdx] * 50);
           const prevY = midY + Math.sin(prevFreq) * prevAmplitude;
           const cpX = (prevX + x) / 2;
           ctx.bezierCurveTo(cpX, prevY, cpX, y, x, y);
@@ -101,7 +114,7 @@ export default function LiveWaveform({ analyser }: LiveWaveformProps) {
       ctx.beginPath();
 
       for (let i = 0; i < history.length; i++) {
-        const x = i * sliceWidth;
+        const x = (history.length - 1 - i) * sliceWidth;
         const amplitude = history[i] * h * 5;
         const freq = (i * 0.2) + (history[i] * 30);
         const y = midY + Math.sin(freq + 1.5) * amplitude;
@@ -109,9 +122,10 @@ export default function LiveWaveform({ analyser }: LiveWaveformProps) {
         if (i === 0) {
           ctx.moveTo(x, y);
         } else {
-          const prevX = (i - 1) * sliceWidth;
-          const prevAmplitude = history[i - 1] * h * 5;
-          const prevFreq = ((i - 1) * 0.2) + (history[i - 1] * 30);
+          const prevIdx = i - 1;
+          const prevX = (history.length - 1 - prevIdx) * sliceWidth;
+          const prevAmplitude = history[prevIdx] * h * 5;
+          const prevFreq = (prevIdx * 0.2) + (history[prevIdx] * 30);
           const prevY = midY + Math.sin(prevFreq + 1.5) * prevAmplitude;
           const cpX = (prevX + x) / 2;
           ctx.bezierCurveTo(cpX, prevY, cpX, y, x, y);
@@ -131,7 +145,7 @@ export default function LiveWaveform({ analyser }: LiveWaveformProps) {
     <canvas
       ref={canvasRef}
       className="w-full rounded-2xl"
-      style={{ height: "280px", background: "rgba(15, 23, 42, 0.03)" }}
+      style={{ height: `${height}px`, background: "rgba(15, 23, 42, 0.03)" }}
     />
   );
 }

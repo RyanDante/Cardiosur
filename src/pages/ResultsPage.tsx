@@ -4,12 +4,12 @@
  */
 
 import { motion } from "motion/react";
-import { Play, Pause, Volume2, ArrowLeft } from "lucide-react";
+import { Play, Pause, Volume2, ArrowLeft, RefreshCw } from "lucide-react";
 import heartAnimation from "../../assets/videos/heat-beat.mp4";
 
 // --- Types ---
 interface ResultsPageProps {
-  bpm: number;  // Fixed: was 'bmp'
+  bpm: number;
   stress: string;
   hrv: number;
   risk: "low" | "moderate" | "high";
@@ -17,9 +17,9 @@ interface ResultsPageProps {
   isPlaying: boolean;
   onBack: () => void;
   onTogglePlayback: () => void;
+  onRestart: () => void;
 }
 
-// Add this object near the top of the component
 const riskConfig = {
   low:      { label: "Low Risk",      color: "#22c55e", bg: "#f0fdf4" },
   moderate: { label: "Moderate Risk", color: "#f59e0b", bg: "#fffbeb" },
@@ -27,21 +27,24 @@ const riskConfig = {
 };
 
 // --- Components ---
-const Header = ({ title, onBack }: { title: string; onBack: () => void }) => (
-  <div className="flex items-center px-6 py-8">
+const Header = ({ title, onBack, onRestart }: { title: string; onBack: () => void; onRestart: () => void }) => (
+  <div className="flex items-center px-4 sm:px-6 py-4 sm:py-6">
     <button onClick={onBack} className="p-2 -ml-2 text-emerald-600">
-      <ArrowLeft size={24} />
+      <ArrowLeft size={22} />
     </button>
-    <h1 className="flex-1 text-center text-xl font-medium text-slate-600 pr-8 tracking-tight">
+    <h1 className="flex-1 text-center text-base sm:text-xl font-medium text-slate-600 tracking-tight">
       {title}
     </h1>
+    <button onClick={onRestart} className="p-2 -mr-2 text-emerald-600" aria-label="Restart test">
+      <RefreshCw size={22} />
+    </button>
   </div>
 );
 
 const Waveform = ({ color = "#cbd5e1" }: { color?: string }) => (
   <svg
     viewBox="0 0 400 100"
-    className="w-full h-24 my-8"
+    className="w-full h-14 sm:h-20 my-3 sm:my-5"
     preserveAspectRatio="none"
   >
     <motion.path
@@ -52,17 +55,13 @@ const Waveform = ({ color = "#cbd5e1" }: { color?: string }) => (
       strokeLinecap="round"
       initial={{ pathLength: 0, opacity: 0 }}
       animate={{ pathLength: 1, opacity: 1 }}
-      transition={{
-        duration: 2,
-        repeat: Infinity,
-        ease: "linear",
-      }}
+      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
     />
   </svg>
 );
 
 export default function ResultsPage({
-  bpm,  // Fixed: was 'bmp'
+  bpm,
   stress,
   hrv,
   risk,
@@ -70,6 +69,7 @@ export default function ResultsPage({
   isPlaying,
   onBack,
   onTogglePlayback,
+  onRestart,
 }: ResultsPageProps) {
   return (
     <motion.div
@@ -83,114 +83,104 @@ export default function ResultsPage({
         <video
           autoPlay
           loop
-          muted
+        //   muted
           playsInline
-          className="w-full h-full object-contain scale-100"
+          className="w-full h-full object-contain scale-150"
         >
-          <source 
-            src={heartAnimation}
-            type="video/mp4" 
-          />
+          <source src={heartAnimation} type="video/mp4" />
           Your browser does not support the video tag.
         </video>
-        {/* Soft white vignette to blend with background */}
         <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_20%,white_90%)]" />
       </div>
 
-      <div className="relative z-10 flex-1 flex flex-col">
-        <Header title="Quick Results" onBack={onBack} />
+      <div className="relative z-10 flex-1 flex flex-col h-full overflow-y-auto">
+        <Header title="Quick Results" onBack={onBack} onRestart={onRestart} />
 
-        <div className="flex-1 px-6 flex flex-col gap-6 py-6  -translate-y-8">
-          {/* BPM Card - comes from above */}
+        <div className="flex-1 px-4 sm:px-6 flex flex-col gap-3 sm:gap-4 pb-6">
+          {/* BPM Card */}
           <motion.div
             initial={{ opacity: 0, y: -60 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, type: "spring", damping: 20 }}
-            className="backdrop-blur-[10px] bg-white/10 border border-white/40 p-4 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)]"
+            className="backdrop-blur-[10px] bg-white/10 border border-white/40 p-3 sm:p-3.5 rounded-[22px] sm:rounded-[28px] shadow-[0_20px_50px_rgba(0,0,0,0.05)]"
           >
-            <p className="text-black text-[10px] font-bold uppercase tracking-[0.2em] mb-2 opacity-70">
+            <p className="text-black text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1 opacity-70">
               PCG Readings
             </p>
-            <div className="flex items-baseline gap-2 mb-2">
-              <span className="text-8xl font-bold text-[#1e293b] tracking-tighter">{bpm}</span>
-              <span className="text-3xl font-light text-black -translate-y-6">BPM</span>
+            <div className="flex items-baseline gap-2 mb-1">
+              <span className="text-5xl sm:text-7xl font-bold text-[#1e293b] tracking-tighter">{bpm}</span>
+              <span className="text-lg sm:text-2xl font-light text-black -translate-y-3 sm:-translate-y-5">BPM</span>
             </div>
-            {/* Risk badge */}
             <div
-              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest mb-2"
-              style={{
-                background: riskConfig[risk].bg,
-                color: riskConfig[risk].color,
-              }}
+              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[9px] sm:text-[10px] font-bold uppercase tracking-widest mb-1"
+              style={{ background: riskConfig[risk].bg, color: riskConfig[risk].color }}
             >
-              <span
-                className="w-2 h-2 rounded-full inline-block"
-                style={{ background: riskConfig[risk].color }}
-              />
+              <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: riskConfig[risk].color }} />
               {riskConfig[risk].label}
             </div>
-
             <Waveform color="#10b981" />
           </motion.div>
 
-          {/* Audio Playback Card - comes from below and right */}
+          {/* Audio Playback Card */}
           {audioUrl && (
             <motion.div
-              initial={{ opacity: 0, y: 60, x: 40 }}
+              initial={{ opacity: 0, y: 40, x: 40 }}
               animate={{ opacity: 1, y: 0, x: 0 }}
               transition={{ delay: 0.3, type: "spring", damping: 20 }}
-              className="backdrop-blur-[10px] bg-white/20 border border-white/40 p-4 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] flex items-center gap-4"
+              className="backdrop-blur-[10px] bg-white/20 border border-white/40 p-3 sm:p-3.5 rounded-[22px] sm:rounded-[28px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] flex items-center gap-3"
             >
-              <button 
+              <button
                 onClick={onTogglePlayback}
-                className="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center text-white shadow-lg active:scale-90 transition-transform"
+                className="w-9 h-9 sm:w-10 sm:h-10 bg-emerald-500 rounded-full flex items-center justify-center text-white shadow-lg active:scale-90 transition-transform flex-shrink-0"
               >
-                {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-1" />}
+                {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
               </button>
-              <div className="flex-1">
-                <p className="text-[#1e293b] font-bold text-sm">Heart Sound Recording</p>
-                <p className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">PCG Audio Captured</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-[#1e293b] font-bold text-xs sm:text-sm truncate">Heart Sound Recording</p>
+                <p className="text-slate-500 text-[9px] sm:text-[10px] uppercase font-bold tracking-wider">PCG Audio Captured</p>
               </div>
-              <Volume2 className="text-emerald-500 opacity-50" size={20} />
+              <Volume2 className="text-emerald-500 opacity-50 flex-shrink-0" size={16} />
             </motion.div>
           )}
 
-          <div className="grid grid-cols-2 gap-6 mt-24">
-            {/* Stress Level Card - comes from below and left */}
+          {/* Bottom two cards */}
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 mt-2 sm:mt-4">
+            {/* Stress Level Card */}
             <motion.div
-              initial={{ opacity: 0, y: 60, x: -40 }}
-              animate={{ opacity: 1, y: 0, x: 0 }}
+              initial={{ opacity: 0, y: 40, x: -40 }}
+              animate={{ opacity: 1, y: -12, x: 0 }}
               transition={{ delay: 0.4, type: "spring", damping: 20 }}
-              className="backdrop-blur-[10px] bg-white/10 border border-white/40 p-6 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] flex flex-col justify-center min-h-[140px]"
+              className="backdrop-blur-[10px] bg-white/10 border border-white/40 p-3 sm:p-4 rounded-[22px] sm:rounded-[28px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] flex flex-col justify-center min-h-[90px] sm:min-h-[110px]"
             >
-              <p className="text-black text-[10px] font-bold uppercase tracking-[0.15em] mb-2 opacity-70">
+              <p className="text-black text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1 opacity-70">
                 Stress Levels
               </p>
-              <span className="text-2xl font-bold text-[#1e293b]">{stress}</span>
+              <span className="text-lg sm:text-xl font-bold text-[#1e293b]">{stress}</span>
             </motion.div>
 
-            {/* HRV Card - comes from below and right */}
+            {/* HRV Card */}
             <motion.div
               initial={{ opacity: 0, y: 60, x: 40 }}
               animate={{ opacity: 1, y: 0, x: 0 }}
               transition={{ delay: 0.6, type: "spring", damping: 20 }}
-              className="backdrop-blur-[10px] bg-white/10 border border-white/40 p-6 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] min-h-[140px]"
+              className="backdrop-blur-[10px] bg-white/10 border border-white/40 p-3 sm:p-4 rounded-[22px] sm:rounded-[28px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] min-h-[90px] sm:min-h-[110px]"
             >
-              <p className="text-black text-[10px] font-bold uppercase tracking-[0.15em] mb-2 opacity-70">
+              <p className="text-black text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1 opacity-70">
                 Heart Rate Variability
               </p>
               <div className="flex items-baseline gap-1">
-                <span className="text-4xl font-bold text-[#1e293b]">{hrv}</span>
-                <span className="text-xl text-black font-light">ms</span>
+                <span className="text-2xl sm:text-3xl font-bold text-[#1e293b]">{hrv}</span>
+                <span className="text-xs sm:text-sm text-black font-light">ms</span>
               </div>
-              <p className="text-[10px] mt-3 font-semibold">
+              <p className="text-[9px] sm:text-[10px] mt-1.5 font-semibold">
                 Status: <span className="text-emerald-500">{hrv > 60 ? "Stable" : "Variable"}</span>
               </p>
             </motion.div>
           </div>
 
-          <div className="mt-auto pb-8">
-            <button className="w-full bg-[#34d399] hover:bg-[#10b981] py-5 rounded-[32px] text-white font-bold text-xl shadow-[0_15px_30px_rgba(52,211,153,0.3)] transition-all active:scale-[0.98]">
+          {/* CTA Button */}
+          <div className="mt-auto pt-4 pb-4 sm:pb-6">
+            <button className="w-full bg-[#34d399] hover:bg-[#10b981] py-4 sm:py-5 rounded-[28px] sm:rounded-[32px] text-white font-bold text-lg sm:text-xl shadow-[0_15px_30px_rgba(52,211,153,0.3)] transition-all active:scale-[0.98]">
               Get full results
             </button>
           </div>
