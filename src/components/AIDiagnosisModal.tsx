@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Loader2, AlertTriangle, Heart, Activity, MapPin } from 'lucide-react';
 
@@ -31,11 +31,29 @@ export default function AIDiagnosisModal({
   const [recommendations, setRecommendations] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [severity, setSeverity] = useState<'low' | 'moderate' | 'high'>('low');
+  const [hasAnalyzed, setHasAnalyzed] = useState(false); // Prevent multiple calls
+
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setHasAnalyzed(false);
+      setAiAnalysis('');
+      setRecommendations([]);
+      setIsAnalyzing(false);
+    }
+  }, [isOpen]);
 
   const analyzeWithAI = async () => {
+    // Prevent multiple API calls
+    if (isAnalyzing || hasAnalyzed) {
+      console.log('AI analysis already in progress or completed');
+      return;
+    }
+
     setIsAnalyzing(true);
     setAiAnalysis('');
     setRecommendations([]);
+    setHasAnalyzed(false); // Reset for new analysis
 
     try {
       // Prepare health data for AI analysis
@@ -73,7 +91,10 @@ Format the response as JSON:
   "needsDoctor": true/false
 }`;
 
-      // Call AI API (using Gemini or similar)
+      // Call AI API with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
       const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyCRJOCT2ze9y1E78h-aMRi-9zMof3Pa8DQ', {
         method: 'POST',
         headers: {
@@ -85,8 +106,21 @@ Format the response as JSON:
               text: prompt
             }]
           }]
-        })
+        }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
+
+      // Check for rate limit (429)
+      if (response.status === 429) {
+        console.error('Gemini API rate limit exceeded. Please wait a moment and try again.');
+        throw new Error('Too many requests. Please wait 1-2 minutes and try again.');
+      }
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status} ${response.statusText}`);
+      }
 
       const data = await response.json();
       const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
@@ -100,6 +134,7 @@ Format the response as JSON:
           setAiAnalysis(analysis.summary);
           setRecommendations(analysis.recommendations);
           setSeverity(analysis.severity.toLowerCase());
+          setHasAnalyzed(true); // Mark as completed
         } else {
           // Fallback if parsing fails
           setAiAnalysis(aiText);
@@ -109,21 +144,35 @@ Format the response as JSON:
             'Consult with a healthcare provider for personalized advice'
           ]);
           setSeverity(risk === 'high' ? 'high' : risk === 'moderate' ? 'moderate' : 'low');
+          setHasAnalyzed(true);
         }
       } catch {
         setAiAnalysis(aiText);
         setRecommendations(['Consult with a healthcare provider']);
+        setHasAnalyzed(true);
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI analysis failed:', error);
-      setAiAnalysis('Unable to generate AI analysis at this time. Please consult with a healthcare provider for personalized medical advice.');
+      
+      // User-friendly error messages
+      let errorMessage = 'Unable to generate AI analysis at this time.';
+      if (error.name === 'AbortError') {
+        errorMessage = 'AI analysis timed out. Please try again.';
+      } else if (error.message.includes('Too many requests')) {
+        errorMessage = error.message;
+      } else {
+        errorMessage += ' Please consult with a healthcare provider for personalized medical advice.';
+      }
+      
+      setAiAnalysis(errorMessage);
       setRecommendations([
         'Schedule an appointment with your doctor',
         'Monitor your symptoms',
         'Maintain a healthy lifestyle'
       ]);
       setSeverity(risk === 'high' ? 'high' : 'moderate');
+      setHasAnalyzed(true);
     } finally {
       setIsAnalyzing(false);
     }

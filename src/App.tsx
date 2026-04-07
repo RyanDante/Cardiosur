@@ -144,6 +144,7 @@ export default function App() {
   const processorRef = useRef<HeartAudioProcessor | null>(null);
   const audioRef     = useRef<HTMLAudioElement | null>(null);
   const filteredBlobRef = useRef<Blob | null>(null);
+  const backendCallMade = useRef(false); // Prevent multiple backend calls
 
   // Keep live values accessible inside callbacks without stale closure
   const liveBpmRef = useRef(0);
@@ -261,9 +262,15 @@ export default function App() {
               setScreen("results");
             }
             
-            // Send to backend API in background (non-blocking)
+            // Send to backend API in background (ONLY ONCE)
+            if (backendCallMade.current) {
+              console.log("Backend call already made, skipping duplicate");
+              return;
+            }
+            
+            backendCallMade.current = true;
             setIsPredicting(true);
-            console.log("Sending audio to backend in background...");
+            console.log("Sending audio to backend in background (first call only)...");
             
             // Safety timeout: ensure isPredicting is set to false after 20 seconds max
             const safetyTimeout = setTimeout(() => {
@@ -497,6 +504,7 @@ export default function App() {
     setIsPredicting(false);
     setHeartbeat(false);
     filteredBlobRef.current = null;
+    backendCallMade.current = false; // Reset backend call guard
   };
 
   // ── Pulsing marker dots on torso ────────────────────────

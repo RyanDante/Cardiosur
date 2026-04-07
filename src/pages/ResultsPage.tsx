@@ -131,7 +131,7 @@ export default function ResultsPage({
         <video
           autoPlay
           loop
-        //   muted
+          muted
           playsInline
           className="w-full h-full object-contain scale-150"
         >
