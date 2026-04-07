@@ -255,9 +255,11 @@ export default function App() {
             setFinalRisk(riskFromBpm(bpm));
             console.log("Final values set successfully");
 
-            // Immediately show results with local calculations
-            console.log("Transitioning to results screen immediately");
-            setScreen("results");
+            // Only transition to results if not already there
+            if (screen !== "results") {
+              console.log("Transitioning to results screen from callback");
+              setScreen("results");
+            }
             
             // Send to backend API in background (non-blocking)
             setIsPredicting(true);
@@ -394,10 +396,18 @@ export default function App() {
     if (screen !== "recording") return;
 
     if (timer <= 0) {
-      // Time's up — show analyzing screen and stop processor
+      // Time's up — stop processor immediately
       console.log("Timer reached 0, stopping processor...");
-      setScreen("analyzing");
       processorRef.current?.stop();
+      
+      // IMMEDIATELY show results on mobile (don't wait for analyzing screen)
+      // The audio callback will populate data when ready
+      setTimeout(() => {
+        console.log("Transitioning to results screen");
+        setScreen("results");
+        setIsPredicting(false);
+      }, 500); // Small delay for processor to stop
+      
       return;
     }
 
@@ -799,6 +809,18 @@ export default function App() {
               <p className="text-slate-400 text-base max-w-[250px] text-center">
                 Running advanced phonocardiography AI model
               </p>
+              
+              {/* Skip button */}
+              <button
+                onClick={() => {
+                  console.log("User skipped analysis, showing results");
+                  setScreen("results");
+                  setIsPredicting(false);
+                }}
+                className="mt-4 px-6 py-3 bg-white/10 hover:bg-white/20 text-[#6dfa7e] rounded-full font-bold transition-colors"
+              >
+                Skip & See Results →
+              </button>
             </div>
           </motion.div>
         )}
