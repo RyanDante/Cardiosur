@@ -322,7 +322,35 @@ export default function App() {
     }
   };
 
-  // ── Step 1: Loading countdown → Recording (5s countdown) ──────
+  // ── Step 1: User clicks "Start" - Request permission first ──────
+  const handleStartClick = async () => {
+    console.log("User clicked Start - requesting microphone permission...");
+    
+    try {
+      // Request microphone permission immediately on user click
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: 1,
+          sampleRate: 44100,
+        },
+      });
+      
+      // Permission granted - stop the stream immediately (we'll create a new one during recording)
+      stream.getTracks().forEach(track => track.stop());
+      console.log("Microphone permission granted, proceeding to countdown");
+      
+      // Now go to loading screen
+      setScreen("loading");
+    } catch (err) {
+      console.error("Microphone permission denied:", err);
+      setError("Microphone access is required. Please allow microphone access and try again.");
+    }
+  };
+
+  // ── Step 2: Loading countdown → Recording (5s countdown) ──────
   useEffect(() => {
     if (screen !== "loading") return;
 
@@ -348,7 +376,7 @@ export default function App() {
     };
   }, [screen]);
 
-  // ── Step 2: Countdown while recording ──────────────────
+  // ── Step 3: Countdown while recording ──────────────────
   useEffect(() => {
     if (screen !== "recording") return;
 
@@ -532,7 +560,7 @@ export default function App() {
               )}
 
               <button
-                onClick={() => setScreen("loading")}
+                onClick={handleStartClick}
                 className="w-full max-w-[260px] bg-[#121826] py-4 sm:py-5 rounded-[40px] text-[#00ff44] font-bold text-4xl sm:text-5xl tracking-tight transition-transform active:scale-95 shadow-2xl"
               >
                 Start
